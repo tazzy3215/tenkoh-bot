@@ -1,6 +1,3 @@
-// =============================
-// 必要なライブラリ
-// =============================
 const { Client, GatewayIntentBits } = require('discord.js');
 const { google } = require('googleapis');
 require('dotenv').config();
@@ -144,17 +141,4 @@ client.on('messageReactionAdd', async (reaction, user) => {
     await sheetsClient.spreadsheets.values.update({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: `点呼表!${targetColumn}${targetRow}`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: [[mark]] },
-    });
-
-    console.log(`書き込み完了：${targetColumn}${targetRow} に ${mark}`);
-  } catch (err) {
-    console.error('リアクション処理中にエラー:', err);
-  }
-});
-
-// =============================
-// Bot 起動
-// =============================
-client.login(process.env.DISCORD_BOT_TOKEN);
+      valueInput
