@@ -1,21 +1,12 @@
-// =============================
-// Render 用：HTTP サーバー（必須）
-// =============================
 const http = require('http');
 http.createServer((req, res) => {
   res.writeHead(200);
   res.end('Bot is running');
 }).listen(process.env.PORT || 3000);
 
-// =============================
-// エラーを確実にログに出す
-// =============================
 process.on('unhandledRejection', console.error);
 process.on('uncaughtException', console.error);
 
-// =============================
-// 環境変数チェック
-// =============================
 console.log("ENV CHECK START");
 console.log("DISCORD_TOKEN:", process.env.DISCORD_TOKEN ? "OK" : "MISSING");
 console.log("GOOGLE_JSON:", process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? "OK" : "MISSING");
@@ -23,16 +14,10 @@ console.log("SPREADSHEET_ID:", process.env.SPREADSHEET_ID ? "OK" : "MISSING");
 console.log("CHANNEL_ID:", process.env.CHANNEL_ID ? "OK" : "MISSING");
 console.log("ENV CHECK END");
 
-// =============================
-// Discord & Google API 読み込み
-// =============================
 const { Client, GatewayIntentBits } = require('discord.js');
 const { google } = require('googleapis');
 require('dotenv').config();
 
-// =============================
-// Discord Bot 初期化
-// =============================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -42,9 +27,6 @@ const client = new Client({
   ],
 });
 
-// =============================
-// Google Sheets API 認証
-// =============================
 let auth;
 try {
   auth = new google.auth.GoogleAuth({
@@ -58,9 +40,6 @@ try {
 
 const sheetsClient = google.sheets({ version: 'v4', auth });
 
-// =============================
-// Sheets API OK テスト
-// =============================
 (async () => {
   try {
     await sheetsClient.spreadsheets.get({
@@ -72,14 +51,8 @@ const sheetsClient = google.sheets({ version: 'v4', auth });
   }
 })();
 
-// =============================
-// 設定：対象列（E〜K）
-// =============================
 const TARGET_COLUMNS = ['E', 'F', 'G', 'H', 'I', 'J', 'K'];
 
-// =============================
-// A：Bot 起動時 → メッセージにリアクション付与
-// =============================
 client.once('ready', async () => {
   console.log('Bot is ready!');
 
@@ -87,7 +60,6 @@ client.once('ready', async () => {
     const channel = await client.channels.fetch(process.env.CHANNEL_ID);
 
     for (const col of TARGET_COLUMNS) {
-      // POSTED 判定
       const postedRes = await sheetsClient.spreadsheets.values.get({
         spreadsheetId: process.env.SPREADSHEET_ID,
         range: `点呼表!${col}1`,
@@ -96,7 +68,6 @@ client.once('ready', async () => {
       const posted = postedRes.data.values?.[0]?.[0] || '';
       if (posted !== 'POSTED') continue;
 
-      // メッセージID取得
       const idRes = await sheetsClient.spreadsheets.values.get({
         spreadsheetId: process.env.SPREADSHEET_ID,
         range: `点呼表!${col}2`,
@@ -107,14 +78,12 @@ client.once('ready', async () => {
 
       let message = null;
 
-      // ① 通常 fetch
       try {
         message = await channel.messages.fetch(postId);
       } catch {
         console.log(`fetch 失敗 → fallbackへ：${postId}`);
       }
 
-      // ② fallback：最新100件から照合
       if (!message) {
         try {
           const messages = await channel.messages.fetch({ limit: 100 });
@@ -124,16 +93,14 @@ client.once('ready', async () => {
         }
       }
 
-      // ③ それでも見つからなければスキップ
       if (!message) {
         console.log(`メッセージ取得失敗（完全に見つからず）：${postId}`);
         continue;
       }
 
-      // ④ リアクション付与
       try {
         await message.react('⭕');
-        await message.react('△');
+        await message.react('🔺');  // ← 🔺に変更済み
         await message.react('❌');
         console.log(`リアクション付与完了：${col}列`);
       } catch (err) {
@@ -145,9 +112,6 @@ client.once('ready', async () => {
   }
 });
 
-// =============================
-// B：リアクション検知 → スプレッドシート書き込み
-// =============================
 client.on('messageReactionAdd', async (reaction, user) => {
   try {
     if (user.bot) return;
@@ -158,11 +122,10 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
     let mark = '';
     if (emoji === '⭕') mark = '〇';
-    else if (emoji === '△') mark = '△';
+    else if (emoji === '🔺') mark = '△';  // ← 🔺を△として記録
     else if (emoji === '❌') mark = '×';
     else return;
 
-    // 投稿IDがどの列か判定
     let targetColumn = null;
     for (const col of TARGET_COLUMNS) {
       const res = await sheetsClient.spreadsheets.values.get({
@@ -177,7 +140,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
     }
     if (!targetColumn) return;
 
-    // A列で Discord ID を検索
     const sheetData = await sheetsClient.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: '点呼表!A:A',
@@ -185,7 +147,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
     const ids = sheetData.data.values?.flat() || [];
     let rowIndex = ids.indexOf(userId);
 
-    // 見つからなければ名簿から探して追加
     if (rowIndex === -1) {
       const roster = await sheetsClient.spreadsheets.values.get({
         spreadsheetId: process.env.SPREADSHEET_ID,
@@ -220,7 +181,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
     const targetRow = rowIndex + 1;
 
-    // スプレッドシートに書き込み
     await sheetsClient.spreadsheets.values.update({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: `点呼表!${targetColumn}${targetRow}`,
@@ -235,9 +195,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
   }
 });
 
-// =============================
-// Bot 起動
-// =============================
 console.log("Before client.login");
 client.login(process.env.DISCORD_TOKEN);
 console.log("After client.login");
