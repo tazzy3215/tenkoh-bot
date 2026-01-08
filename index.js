@@ -1,8 +1,21 @@
+// =============================
+// Render 用：HTTP サーバー（必須）
+// =============================
 const http = require('http');
 http.createServer((req, res) => {
   res.writeHead(200);
-  res.end('OK');
+  res.end('Bot is running');
 }).listen(process.env.PORT || 3000);
+
+// =============================
+// エラーを確実にログに出す（超重要）
+// =============================
+process.on('unhandledRejection', console.error);
+process.on('uncaughtException', console.error);
+
+// =============================
+// Discord & Google API 読み込み
+// =============================
 const { Client, GatewayIntentBits } = require('discord.js');
 const { google } = require('googleapis');
 require('dotenv').config();
@@ -22,10 +35,15 @@ const client = new Client({
 // =============================
 // Google Sheets API 認証
 // =============================
-const auth = new google.auth.GoogleAuth({
-  credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
+let auth;
+try {
+  auth = new google.auth.GoogleAuth({
+    credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+} catch (err) {
+  console.error("❌ GOOGLE_SERVICE_ACCOUNT_JSON の解析に失敗:", err);
+}
 const sheetsClient = google.sheets({ version: 'v4', auth });
 
 // =============================
@@ -34,39 +52,43 @@ const sheetsClient = google.sheets({ version: 'v4', auth });
 const TARGET_COLUMNS = ['E', 'F', 'G', 'H', 'I', 'J', 'K'];
 
 // =============================
-// Bot 起動時：投稿IDにリアクションを付ける（A）
+// Bot 起動時：投稿IDにリアクション付与（A）
 // =============================
 client.once('ready', async () => {
   console.log('Bot is ready!');
 
-  const channel = await client.channels.fetch(process.env.CHANNEL_ID);
+  try {
+    const channel = await client.channels.fetch(process.env.CHANNEL_ID);
 
-  for (const col of TARGET_COLUMNS) {
-    const postedRes = await sheetsClient.spreadsheets.values.get({
-      spreadsheetId: process.env.SPREADSHEET_ID,
-      range: `点呼表!${col}1`,
-    });
+    for (const col of TARGET_COLUMNS) {
+      const postedRes = await sheetsClient.spreadsheets.values.get({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: `点呼表!${col}1`,
+      });
 
-    const posted = postedRes.data.values?.[0]?.[0] || '';
-    if (posted !== 'POSTED') continue;
+      const posted = postedRes.data.values?.[0]?.[0] || '';
+      if (posted !== 'POSTED') continue;
 
-    const idRes = await sheetsClient.spreadsheets.values.get({
-      spreadsheetId: process.env.SPREADSHEET_ID,
-      range: `点呼表!${col}2`,
-    });
+      const idRes = await sheetsClient.spreadsheets.values.get({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: `点呼表!${col}2`,
+      });
 
-    const postId = idRes.data.values?.[0]?.[0] || null;
-    if (!postId) continue;
+      const postId = idRes.data.values?.[0]?.[0] || null;
+      if (!postId) continue;
 
-    try {
-      const message = await channel.messages.fetch(postId);
-      await message.react('⭕');
-      await message.react('△');
-      await message.react('❌');
-      console.log(`リアクション付与完了：${col}列`);
-    } catch {
-      console.log(`メッセージ取得失敗：${postId}`);
+      try {
+        const message = await channel.messages.fetch(postId);
+        await message.react('⭕');
+        await message.react('△');
+        await message.react('❌');
+        console.log(`リアクション付与完了：${col}列`);
+      } catch {
+        console.log(`メッセージ取得失敗：${postId}`);
+      }
     }
+  } catch (err) {
+    console.error("❌ ready 内でエラー:", err);
   }
 });
 
