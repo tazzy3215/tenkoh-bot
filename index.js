@@ -138,4 +138,63 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
     // 点呼表の A列で Discord ID を検索
     const sheetData = await sheetsClient.spreadsheets.values.get({
-      spreadsheetId: process.env.SP
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: '点呼表!A:A',
+    });
+    const ids = sheetData.data.values?.flat() || [];
+    let rowIndex = ids.indexOf(userId);
+
+    // 見つからなければ名簿から探して追加
+    if (rowIndex === -1) {
+      const roster = await sheetsClient.spreadsheets.values.get({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: '名簿!A:C',
+      });
+      const rosterRows = roster.data.values || [];
+      let found = null;
+
+      for (let i = 0; i < rosterRows.length; i++) {
+        if (rosterRows[i][0] === userId) {
+          found = rosterRows[i];
+          break;
+        }
+      }
+
+      if (!found) return;
+
+      await sheetsClient.spreadsheets.values.append({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: '点呼表!A:C',
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [found] },
+      });
+
+      const updated = await sheetsClient.spreadsheets.values.get({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: '点呼表!A:A',
+      });
+      const updatedIds = updated.data.values?.flat() || [];
+      rowIndex = updatedIds.indexOf(userId);
+    }
+
+    const targetRow = rowIndex + 1;
+
+    // スプレッドシートに書き込み
+    await sheetsClient.spreadsheets.values.update({
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: `点呼表!${targetColumn}${targetRow}`,
+      valueInputOption: 'USER_ENTERED',
+      resource: {
+        values: [[mark]],
+      },
+    });
+
+  } catch (err) {
+    console.error('Error in messageReactionAdd:', err);
+  }
+});
+
+// =============================
+// Bot 起動
+// =============================
+client.login(process.env.DISCORD_TOKEN);
