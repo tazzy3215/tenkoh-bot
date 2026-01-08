@@ -113,12 +113,14 @@ client.on('messageReactionAdd', async (reaction, user) => {
       });
       const rosterRows = roster.data.values || [];
       let found = null;
+
       for (let i = 0; i < rosterRows.length; i++) {
         if (rosterRows[i][0] === userId) {
           found = rosterRows[i];
           break;
         }
       }
+
       if (!found) return;
 
       await sheetsClient.spreadsheets.values.append({
@@ -138,7 +140,22 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
     const targetRow = rowIndex + 1;
 
+    // スプレッドシートに書き込み
     await sheetsClient.spreadsheets.values.update({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: `点呼表!${targetColumn}${targetRow}`,
-      valueInput
+      valueInputOption: 'USER_ENTERED',
+      resource: {
+        values: [[mark]],
+      },
+    });
+
+  } catch (err) {
+    console.error('Error in messageReactionAdd:', err);
+  }
+});
+
+// =============================
+// Bot 起動
+// =============================
+client.login(process.env.DISCORD_TOKEN);
