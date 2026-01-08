@@ -205,13 +205,15 @@ client.on('messageReactionAdd', async (reaction, user) => {
     if (!targetColumn) return;
 
     // ===============================
-    // A列（ID一覧）取得
+    // A列（ID一覧）取得（空白行対策版）
     // ===============================
     const sheetData = await sheetsClient.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
-      range: '点呼表!A:A',
+      range: '点呼表!A1:A500',   // ← 空白行があっても全行取得
+      majorDimension: 'COLUMNS'
     });
-    const ids = sheetData.data.values?.flat() || [];
+
+    const ids = sheetData.data.values?.[0] || [];
     let rowIndex = ids.indexOf(userId);
 
     let targetRow = null;
