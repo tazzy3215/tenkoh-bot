@@ -79,7 +79,7 @@ const sheetsClient = google.sheets({ version: 'v4', auth });
 })();
 
 // ===============================
-// 6. 点呼処理
+// 6. 点呼処理（リアクション付与）
 // ===============================
 const TARGET_COLUMNS = ['E', 'F', 'G', 'H', 'I', 'J', 'K'];
 
@@ -90,6 +90,7 @@ client.once('ready', async () => {
     const channel = await client.channels.fetch(process.env.CHANNEL_ID);
 
     for (const col of TARGET_COLUMNS) {
+      // POSTED 判定
       const postedRes = await sheetsClient.spreadsheets.values.get({
         spreadsheetId: process.env.SPREADSHEET_ID,
         range: `点呼表!${col}1`,
@@ -98,6 +99,7 @@ client.once('ready', async () => {
       const posted = postedRes.data.values?.[0]?.[0] || '';
       if (posted !== 'POSTED') continue;
 
+      // 投稿ID取得
       const idRes = await sheetsClient.spreadsheets.values.get({
         spreadsheetId: process.env.SPREADSHEET_ID,
         range: `点呼表!${col}2`,
@@ -108,12 +110,14 @@ client.once('ready', async () => {
 
       let message = null;
 
+      // メッセージ取得（通常）
       try {
         message = await channel.messages.fetch(postId);
       } catch {
         console.log(`fetch 失敗 → fallbackへ：${postId}`);
       }
 
+      // fallback（100件取得して探す）
       if (!message) {
         try {
           const messages = await channel.messages.fetch({ limit: 100 });
@@ -128,6 +132,7 @@ client.once('ready', async () => {
         continue;
       }
 
+      // リアクション付与
       try {
         await message.react('⭕');
         await message.react('🔺');
@@ -143,7 +148,7 @@ client.once('ready', async () => {
 });
 
 // ===============================
-// 7. リアクション処理（行ズレ修正版）
+// 7. リアクション処理（行ズレ修正版 + 他リアクション自動削除）
 // ===============================
 client.on('messageReactionAdd', async (reaction, user) => {
   try {
@@ -157,13 +162,34 @@ client.on('messageReactionAdd', async (reaction, user) => {
     const emoji = reaction.emoji.name;
     const userId = user.id;
 
+    // 点呼マーク変換
     let mark = '';
     if (emoji === '⭕') mark = '〇';
     else if (emoji === '🔺') mark = '△';
     else if (emoji === '❌') mark = '×';
     else return;
 
+    // ===============================
+    // ★ 他のリアクションを自動で消す（常に1つだけ）
+    // ===============================
+    const allEmojis = ['⭕', '🔺', '❌'];
+
+    for (const e of allEmojis) {
+      if (e !== emoji) {
+        const r = message.reactions.cache.get(e);
+        if (r) {
+          try {
+            await r.users.remove(user.id);
+          } catch (err) {
+            console.log(`他リアクション削除失敗: ${e}`, err);
+          }
+        }
+      }
+    }
+
+    // ===============================
     // どの列の点呼か判定
+    // ===============================
     let targetColumn = null;
     for (const col of TARGET_COLUMNS) {
       const res = await sheetsClient.spreadsheets.values.get({
@@ -178,7 +204,9 @@ client.on('messageReactionAdd', async (reaction, user) => {
     }
     if (!targetColumn) return;
 
+    // ===============================
     // A列（ID一覧）取得
+    // ===============================
     const sheetData = await sheetsClient.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: '点呼表!A:A',
@@ -186,11 +214,11 @@ client.on('messageReactionAdd', async (reaction, user) => {
     const ids = sheetData.data.values?.flat() || [];
     let rowIndex = ids.indexOf(userId);
 
+    let targetRow = null;
+
     // ===============================
     // 新規ユーザー → 名簿から追加
     // ===============================
-    let targetRow = null;
-
     if (rowIndex === -1) {
       const roster = await sheetsClient.spreadsheets.values.get({
         spreadsheetId: process.env.SPREADSHEET_ID,
