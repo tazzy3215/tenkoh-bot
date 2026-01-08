@@ -42,6 +42,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
   ],
+  partials: ['MESSAGE', 'CHANNEL', 'REACTION'],
 });
 
 // Discord再接続耐性（Render無料プラン向け）
