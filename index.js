@@ -1,9 +1,3 @@
-console.log("ENV CHECK START");
-console.log("DISCORD_TOKEN:", process.env.DISCORD_TOKEN ? "OK" : "MISSING");
-console.log("GOOGLE_JSON:", process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? "OK" : "MISSING");
-console.log("SPREADSHEET_ID:", process.env.SPREADSHEET_ID ? "OK" : "MISSING");
-console.log("CHANNEL_ID:", process.env.CHANNEL_ID ? "OK" : "MISSING");
-console.log("ENV CHECK END");
 // =============================
 // Render 用：HTTP サーバー（必須）
 // =============================
@@ -14,10 +8,20 @@ http.createServer((req, res) => {
 }).listen(process.env.PORT || 3000);
 
 // =============================
-// エラーを確実にログに出す（超重要）
+// エラーを確実にログに出す
 // =============================
 process.on('unhandledRejection', console.error);
 process.on('uncaughtException', console.error);
+
+// =============================
+// 環境変数チェック
+// =============================
+console.log("ENV CHECK START");
+console.log("DISCORD_TOKEN:", process.env.DISCORD_TOKEN ? "OK" : "MISSING");
+console.log("GOOGLE_JSON:", process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? "OK" : "MISSING");
+console.log("SPREADSHEET_ID:", process.env.SPREADSHEET_ID ? "OK" : "MISSING");
+console.log("CHANNEL_ID:", process.env.CHANNEL_ID ? "OK" : "MISSING");
+console.log("ENV CHECK END");
 
 // =============================
 // Discord & Google API 読み込み
@@ -39,7 +43,7 @@ const client = new Client({
 });
 
 // =============================
-// Google Sheets API 認証
+// Google Sheets API 認証（try/catch追加）
 // =============================
 let auth;
 try {
@@ -47,9 +51,11 @@ try {
     credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
+  console.log("GoogleAuth OK");
 } catch (err) {
-  console.error("❌ GOOGLE_SERVICE_ACCOUNT_JSON の解析に失敗:", err);
+  console.error("❌ GoogleAuth ERROR:", err);
 }
+
 const sheetsClient = google.sheets({ version: 'v4', auth });
 
 // =============================
@@ -132,63 +138,4 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
     // 点呼表の A列で Discord ID を検索
     const sheetData = await sheetsClient.spreadsheets.values.get({
-      spreadsheetId: process.env.SPREADSHEET_ID,
-      range: '点呼表!A:A',
-    });
-    const ids = sheetData.data.values?.flat() || [];
-    let rowIndex = ids.indexOf(userId);
-
-    // 見つからなければ名簿から探して追加
-    if (rowIndex === -1) {
-      const roster = await sheetsClient.spreadsheets.values.get({
-        spreadsheetId: process.env.SPREADSHEET_ID,
-        range: '名簿!A:C',
-      });
-      const rosterRows = roster.data.values || [];
-      let found = null;
-
-      for (let i = 0; i < rosterRows.length; i++) {
-        if (rosterRows[i][0] === userId) {
-          found = rosterRows[i];
-          break;
-        }
-      }
-
-      if (!found) return;
-
-      await sheetsClient.spreadsheets.values.append({
-        spreadsheetId: process.env.SPREADSHEET_ID,
-        range: '点呼表!A:C',
-        valueInputOption: 'USER_ENTERED',
-        resource: { values: [found] },
-      });
-
-      const updated = await sheetsClient.spreadsheets.values.get({
-        spreadsheetId: process.env.SPREADSHEET_ID,
-        range: '点呼表!A:A',
-      });
-      const updatedIds = updated.data.values?.flat() || [];
-      rowIndex = updatedIds.indexOf(userId);
-    }
-
-    const targetRow = rowIndex + 1;
-
-    // スプレッドシートに書き込み
-    await sheetsClient.spreadsheets.values.update({
-      spreadsheetId: process.env.SPREADSHEET_ID,
-      range: `点呼表!${targetColumn}${targetRow}`,
-      valueInputOption: 'USER_ENTERED',
-      resource: {
-        values: [[mark]],
-      },
-    });
-
-  } catch (err) {
-    console.error('Error in messageReactionAdd:', err);
-  }
-});
-
-// =============================
-// Bot 起動
-// =============================
-client.login(process.env.DISCORD_TOKEN);
+      spreadsheetId: process.env.SP
