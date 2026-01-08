@@ -43,7 +43,7 @@ const client = new Client({
 });
 
 // =============================
-// Google Sheets API 認証（try/catch追加）
+// Google Sheets API 認証
 // =============================
 let auth;
 try {
@@ -64,7 +64,7 @@ const sheetsClient = google.sheets({ version: 'v4', auth });
 const TARGET_COLUMNS = ['E', 'F', 'G', 'H', 'I', 'J', 'K'];
 
 // =============================
-// Bot 起動時：投稿IDにリアクション付与（A）
+// A：Bot 起動時 → メッセージにリアクション付与
 // =============================
 client.once('ready', async () => {
   console.log('Bot is ready!');
@@ -73,6 +73,7 @@ client.once('ready', async () => {
     const channel = await client.channels.fetch(process.env.CHANNEL_ID);
 
     for (const col of TARGET_COLUMNS) {
+      // POSTED 判定
       const postedRes = await sheetsClient.spreadsheets.values.get({
         spreadsheetId: process.env.SPREADSHEET_ID,
         range: `点呼表!${col}1`,
@@ -81,6 +82,7 @@ client.once('ready', async () => {
       const posted = postedRes.data.values?.[0]?.[0] || '';
       if (posted !== 'POSTED') continue;
 
+      // メッセージID取得
       const idRes = await sheetsClient.spreadsheets.values.get({
         spreadsheetId: process.env.SPREADSHEET_ID,
         range: `点呼表!${col}2`,
@@ -89,14 +91,39 @@ client.once('ready', async () => {
       const postId = idRes.data.values?.[0]?.[0] || null;
       if (!postId) continue;
 
+      let message = null;
+
+      // ① 通常 fetch
       try {
-        const message = await channel.messages.fetch(postId);
+        message = await channel.messages.fetch(postId);
+      } catch {
+        console.log(`fetch 失敗 → fallbackへ：${postId}`);
+      }
+
+      // ② fallback：最新100件から照合
+      if (!message) {
+        try {
+          const messages = await channel.messages.fetch({ limit: 100 });
+          message = messages.get(postId);
+        } catch {
+          console.log(`fallback 取得失敗：${postId}`);
+        }
+      }
+
+      // ③ それでも見つからなければスキップ
+      if (!message) {
+        console.log(`メッセージ取得失敗（完全に見つからず）：${postId}`);
+        continue;
+      }
+
+      // ④ リアクション付与
+      try {
         await message.react('⭕');
         await message.react('△');
         await message.react('❌');
         console.log(`リアクション付与完了：${col}列`);
-      } catch {
-        console.log(`メッセージ取得失敗：${postId}`);
+      } catch (err) {
+        console.log(`リアクション付与失敗：${postId}`, err);
       }
     }
   } catch (err) {
@@ -105,7 +132,7 @@ client.once('ready', async () => {
 });
 
 // =============================
-// リアクション検知 → スプレッドシート書き込み（B）
+// B：リアクション検知 → スプレッドシート書き込み
 // =============================
 client.on('messageReactionAdd', async (reaction, user) => {
   try {
@@ -136,7 +163,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
     }
     if (!targetColumn) return;
 
-    // 点呼表の A列で Discord ID を検索
+    // A列で Discord ID を検索
     const sheetData = await sheetsClient.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: '点呼表!A:A',
