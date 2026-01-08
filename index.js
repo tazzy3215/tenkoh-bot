@@ -1,12 +1,26 @@
-const http = require('http');
-http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('Bot is running');
-}).listen(process.env.PORT || 3000);
+// ===============================
+// 1. Webサーバー（Render用）
+// ===============================
+const express = require('express');
+const app = express();
 
+app.get('/', (req, res) => {
+  res.status(200).send('Bot is running');
+});
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log('Web server is running');
+});
+
+// ===============================
+// 2. エラーハンドリング
+// ===============================
 process.on('unhandledRejection', console.error);
 process.on('uncaughtException', console.error);
 
+// ===============================
+// 3. 環境変数チェック
+// ===============================
 console.log("ENV CHECK START");
 console.log("DISCORD_TOKEN:", process.env.DISCORD_TOKEN ? "OK" : "MISSING");
 console.log("GOOGLE_JSON:", process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? "OK" : "MISSING");
@@ -14,6 +28,9 @@ console.log("SPREADSHEET_ID:", process.env.SPREADSHEET_ID ? "OK" : "MISSING");
 console.log("CHANNEL_ID:", process.env.CHANNEL_ID ? "OK" : "MISSING");
 console.log("ENV CHECK END");
 
+// ===============================
+// 4. Discord & Google API
+// ===============================
 const { Client, GatewayIntentBits } = require('discord.js');
 const { google } = require('googleapis');
 require('dotenv').config();
@@ -27,6 +44,13 @@ const client = new Client({
   ],
 });
 
+// Discord再接続耐性（Render無料プラン向け）
+client.on("error", console.error);
+client.on("shardError", console.error);
+
+// ===============================
+// 5. Google Sheets 認証
+// ===============================
 let auth;
 try {
   auth = new google.auth.GoogleAuth({
@@ -40,6 +64,7 @@ try {
 
 const sheetsClient = google.sheets({ version: 'v4', auth });
 
+// 起動時に Sheets API が使えるか確認
 (async () => {
   try {
     await sheetsClient.spreadsheets.get({
@@ -51,6 +76,9 @@ const sheetsClient = google.sheets({ version: 'v4', auth });
   }
 })();
 
+// ===============================
+// 6. 点呼処理
+// ===============================
 const TARGET_COLUMNS = ['E', 'F', 'G', 'H', 'I', 'J', 'K'];
 
 client.once('ready', async () => {
@@ -100,7 +128,7 @@ client.once('ready', async () => {
 
       try {
         await message.react('⭕');
-        await message.react('🔺');  // ← 🔺に変更済み
+        await message.react('🔺');
         await message.react('❌');
         console.log(`リアクション付与完了：${col}列`);
       } catch (err) {
@@ -112,6 +140,9 @@ client.once('ready', async () => {
   }
 });
 
+// ===============================
+// 7. リアクション処理
+// ===============================
 client.on('messageReactionAdd', async (reaction, user) => {
   try {
     if (user.bot) return;
@@ -122,7 +153,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
     let mark = '';
     if (emoji === '⭕') mark = '〇';
-    else if (emoji === '🔺') mark = '△';  // ← 🔺を△として記録
+    else if (emoji === '🔺') mark = '△';
     else if (emoji === '❌') mark = '×';
     else return;
 
@@ -195,6 +226,9 @@ client.on('messageReactionAdd', async (reaction, user) => {
   }
 });
 
+// ===============================
+// 8. Discordログイン
+// ===============================
 console.log("Before client.login");
 client.login(process.env.DISCORD_TOKEN);
 console.log("After client.login");
