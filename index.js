@@ -1,3 +1,9 @@
+console.log("ENV CHECK START");
+console.log("DISCORD_TOKEN:", process.env.DISCORD_TOKEN ? "OK" : "MISSING");
+console.log("GOOGLE_JSON:", process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? "OK" : "MISSING");
+console.log("SPREADSHEET_ID:", process.env.SPREADSHEET_ID ? "OK" : "MISSING");
+console.log("CHANNEL_ID:", process.env.CHANNEL_ID ? "OK" : "MISSING");
+console.log("ENV CHECK END");
 // =============================
 // Render 用：HTTP サーバー（必須）
 // =============================
