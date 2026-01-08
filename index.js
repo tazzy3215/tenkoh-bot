@@ -59,6 +59,20 @@ try {
 const sheetsClient = google.sheets({ version: 'v4', auth });
 
 // =============================
+// Sheets API OK テスト
+// =============================
+(async () => {
+  try {
+    await sheetsClient.spreadsheets.get({
+      spreadsheetId: process.env.SPREADSHEET_ID,
+    });
+    console.log("Sheets API OK");
+  } catch (err) {
+    console.error("❌ Sheets API ERROR:", err);
+  }
+})();
+
+// =============================
 // 設定：対象列（E〜K）
 // =============================
 const TARGET_COLUMNS = ['E', 'F', 'G', 'H', 'I', 'J', 'K'];
@@ -224,4 +238,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
 // =============================
 // Bot 起動
 // =============================
+console.log("Before client.login");
 client.login(process.env.DISCORD_TOKEN);
+console.log("After client.login");
