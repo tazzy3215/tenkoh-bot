@@ -31,10 +31,11 @@ console.log("ENV CHECK END");
 // ===============================
 // 4. Discord & Google API
 // ===============================
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, Partials } = require('discord.js');
 const { google } = require('googleapis');
 require('dotenv').config();
 
+// ★ partials を追加（リアクション取得の必須設定）
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -42,10 +43,10 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
   ],
-  partials: ['MESSAGE', 'CHANNEL', 'REACTION'],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
-// Discord再接続耐性（Render無料プラン向け）
+// Discord再接続耐性
 client.on("error", console.error);
 client.on("shardError", console.error);
 
@@ -142,11 +143,15 @@ client.once('ready', async () => {
 });
 
 // ===============================
-// 7. リアクション処理
+// 7. リアクション処理（行ズレ修正版）
 // ===============================
 client.on('messageReactionAdd', async (reaction, user) => {
   try {
     if (user.bot) return;
+
+    // partials 対応
+    if (reaction.partial) await reaction.fetch();
+    if (reaction.message.partial) await reaction.message.fetch();
 
     const message = reaction.message;
     const emoji = reaction.emoji.name;
@@ -158,6 +163,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
     else if (emoji === '❌') mark = '×';
     else return;
 
+    // どの列の点呼か判定
     let targetColumn = null;
     for (const col of TARGET_COLUMNS) {
       const res = await sheetsClient.spreadsheets.values.get({
@@ -172,12 +178,18 @@ client.on('messageReactionAdd', async (reaction, user) => {
     }
     if (!targetColumn) return;
 
+    // A列（ID一覧）取得
     const sheetData = await sheetsClient.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: '点呼表!A:A',
     });
     const ids = sheetData.data.values?.flat() || [];
     let rowIndex = ids.indexOf(userId);
+
+    // ===============================
+    // 新規ユーザー → 名簿から追加
+    // ===============================
+    let targetRow = null;
 
     if (rowIndex === -1) {
       const roster = await sheetsClient.spreadsheets.values.get({
@@ -196,23 +208,27 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
       if (!found) return;
 
-      await sheetsClient.spreadsheets.values.append({
+      // append → 追加された行番号を取得
+      const appendRes = await sheetsClient.spreadsheets.values.append({
         spreadsheetId: process.env.SPREADSHEET_ID,
         range: '点呼表!A:C',
         valueInputOption: 'USER_ENTERED',
         resource: { values: [found] },
       });
 
-      const updated = await sheetsClient.spreadsheets.values.get({
-        spreadsheetId: process.env.SPREADSHEET_ID,
-        range: '点呼表!A:A',
-      });
-      const updatedIds = updated.data.values?.flat() || [];
-      rowIndex = updatedIds.indexOf(userId);
+      const updatedRange = appendRes.data.updates.updatedRange;
+      const match = updatedRange.match(/!(?:[A-Z]+)(\d+):/);
+      targetRow = match ? parseInt(match[1], 10) : null;
+
+      console.log("新規追加 → 行番号:", targetRow);
+    } else {
+      // 既存ユーザー
+      targetRow = rowIndex + 1;
     }
 
-    const targetRow = rowIndex + 1;
-
+    // ===============================
+    // 点呼マークを書き込む
+    // ===============================
     await sheetsClient.spreadsheets.values.update({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: `点呼表!${targetColumn}${targetRow}`,
@@ -221,6 +237,8 @@ client.on('messageReactionAdd', async (reaction, user) => {
         values: [[mark]],
       },
     });
+
+    console.log(`書き込み完了 → ${targetColumn}${targetRow} = ${mark}`);
 
   } catch (err) {
     console.error('Error in messageReactionAdd:', err);
