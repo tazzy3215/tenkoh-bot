@@ -64,23 +64,13 @@ try {
 
 const sheetsClient = google.sheets({ version: 'v4', auth });
 
-(async () => {
-  try {
-    await sheetsClient.spreadsheets.get({
-      spreadsheetId: process.env.SPREADSHEET_ID,
-    });
-    console.log("Sheets API OK");
-  } catch (err) {
-    console.error("❌ Sheets API ERROR:", err);
-  }
-})();
-
 // ===============================
 // 6. 点呼処理（リアクション付与）
 // ===============================
+
+// ★ 最新7列（E〜K）だけを対象にする
 const TARGET_COLUMNS = ['E', 'F', 'G', 'H', 'I', 'J', 'K'];
 
-// ★★★ 追加：リアクション付与処理を関数化 ★★★
 async function addReactionsIfNeeded() {
   try {
     const channel = await client.channels.fetch(process.env.CHANNEL_ID);
@@ -99,7 +89,7 @@ async function addReactionsIfNeeded() {
         range: `点呼表!${col}2`,
       });
 
-      const postId = idRes.data.values?.[0]?.[0] || null;
+      const postId = idRes.data.values?.[0]?.[0]?.toString() || null;
       if (!postId) continue;
 
       let message = null;
@@ -124,7 +114,6 @@ async function addReactionsIfNeeded() {
         continue;
       }
 
-      // ★ すでにリアクションが付いている場合はスキップ
       if (message.reactions.cache.size > 0) {
         continue;
       }
@@ -149,19 +138,110 @@ async function addReactionsIfNeeded() {
 client.once('ready', async () => {
   console.log('Bot is ready!');
 
-  // 起動時に1回実行
   await addReactionsIfNeeded();
 
-  // ★★★ 追加：30秒ごとにチェック ★★★
   setInterval(addReactionsIfNeeded, 30 * 1000);
 });
 
 // ===============================
-// 8. リアクション処理（既存）
+// 8. リアクション検知 → スプレッドシート書き込み
 // ===============================
 client.on('messageReactionAdd', async (reaction, user) => {
-  // （ここはあなたのコードをそのまま残しています）
-  // 省略
+  try {
+    if (user.bot) return;
+
+    if (reaction.partial) {
+      try {
+        await reaction.fetch();
+      } catch {
+        return;
+      }
+    }
+
+    const message = reaction.message;
+    const emoji = reaction.emoji.name;
+    const userId = user.id;
+
+    let mark = '';
+    if (emoji === '⭕') mark = '〇';
+    else if (emoji === '🔺' || emoji === '△') mark = '△';
+    else if (emoji === '❌') mark = '×';
+    else return;
+
+    let targetColumn = null;
+
+    for (const col of TARGET_COLUMNS) {
+      const res = await sheetsClient.spreadsheets.values.get({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: `点呼表!${col}2`,
+      });
+
+      const postId = res.data.values?.[0]?.[0]?.toString() || null;
+
+      if (postId === message.id) {
+        targetColumn = col;
+        break;
+      }
+    }
+
+    if (!targetColumn) return;
+
+    const sheetData = await sheetsClient.spreadsheets.values.get({
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: '点呼表!A:A',
+    });
+
+    const ids = sheetData.data.values?.flat() || [];
+    let rowIndex = ids.indexOf(userId);
+
+    if (rowIndex === -1) {
+      const roster = await sheetsClient.spreadsheets.values.get({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: '名簿!A:C',
+      });
+
+      const rosterRows = roster.data.values || [];
+      let found = null;
+
+      for (let i = 0; i < rosterRows.length; i++) {
+        if (rosterRows[i][0] === userId) {
+          found = rosterRows[i];
+          break;
+        }
+      }
+
+      if (!found) return;
+
+      await sheetsClient.spreadsheets.values.append({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: '点呼表!A:C',
+        valueInputOption: 'USER_ENTERED',
+        resource: { values: [found] },
+      });
+
+      const updated = await sheetsClient.spreadsheets.values.get({
+        spreadsheetId: process.env.SPREADSHEET_ID,
+        range: '点呼表!A:A',
+      });
+
+      const updatedIds = updated.data.values?.flat() || [];
+      rowIndex = updatedIds.indexOf(userId);
+    }
+
+    const targetRow = rowIndex + 1;
+
+    await sheetsClient.spreadsheets.values.update({
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: `点呼表!${targetColumn}${targetRow}`,
+      valueInputOption: 'USER_ENTERED',
+      resource: {
+        values: [[mark]],
+      },
+    });
+
+  } catch (err) {
+    console.error('Error in messageReactionAdd:', err);
+  }
 });
 
 // ===============================
