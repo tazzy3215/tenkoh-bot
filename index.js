@@ -142,7 +142,7 @@ client.once('ready', async () => {
 // ===============================
 // 8. リアクション検知 → スプレッドシート書き込み
 // ===============================
-async function handleReactionChange(reaction, user) {
+async function handleReactionAdd(reaction, user) {
   try {
     if (user.bot) return;
 
@@ -235,13 +235,12 @@ async function handleReactionChange(reaction, user) {
 
     console.log(`✅ ${userId} → ${targetColumn}${targetRow} に ${mark} を反映`);
   } catch (err) {
-    console.error('Error in handleReactionChange:', err);
+    console.error('Error in handleReactionAdd:', err);
   }
 }
 
-// Add と Remove 両方で呼ぶ
-client.on('messageReactionAdd', handleReactionChange);
-client.on('messageReactionRemove', handleReactionChange);
+// Add のみで更新
+client.on('messageReactionAdd', handleReactionAdd);
 
 // ===============================
 // 9. Discordログイン
