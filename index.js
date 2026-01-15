@@ -67,8 +67,6 @@ const sheetsClient = google.sheets({ version: 'v4', auth });
 // ===============================
 // 6. 点呼処理（リアクション付与）
 // ===============================
-
-// ★ 最新7列（E〜K）だけを対象にする
 const TARGET_COLUMNS = ['E', 'F', 'G', 'H', 'I', 'J', 'K'];
 
 async function addReactionsIfNeeded() {
@@ -137,9 +135,7 @@ async function addReactionsIfNeeded() {
 // ===============================
 client.once('ready', async () => {
   console.log('Bot is ready!');
-
   await addReactionsIfNeeded();
-
   setInterval(addReactionsIfNeeded, 30 * 1000);
 });
 
@@ -186,7 +182,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
     if (!targetColumn) return;
 
-    // ★★★ 修正：A6:A だけを検索する
     const sheetData = await sheetsClient.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: '点呼表!A6:A',
@@ -229,7 +224,6 @@ client.on('messageReactionAdd', async (reaction, user) => {
       rowIndex = updatedIds.indexOf(userId);
     }
 
-    // ★★★ 修正：A6 から始まるので +6
     const targetRow = rowIndex + 6;
 
     await sheetsClient.spreadsheets.values.update({
