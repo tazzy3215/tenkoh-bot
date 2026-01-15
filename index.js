@@ -142,7 +142,7 @@ client.once('ready', async () => {
 // ===============================
 // 8. リアクション検知 → スプレッドシート書き込み
 // ===============================
-client.on('messageReactionAdd', async (reaction, user) => {
+async function handleReactionChange(reaction, user) {
   try {
     if (user.bot) return;
 
@@ -156,7 +156,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
     const message = reaction.message;
     const emoji = reaction.emoji.name;
-    const userId = user.id;
+    const userId = user.id.toString(); // 型を統一
 
     let mark = '';
     if (emoji === '⭕') mark = '〇';
@@ -164,7 +164,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
     else if (emoji === '❌') mark = '×';
     else return;
 
-    // ★ 他のリアクションを自動で外す（1人1つに制限）
+    // 他のリアクションを自動で外す（1人1つ制限）
     const allReactions = message.reactions.cache;
     for (const [emojiName, reactionObj] of allReactions) {
       if (emojiName !== emoji) {
@@ -176,29 +176,26 @@ client.on('messageReactionAdd', async (reaction, user) => {
       }
     }
 
+    // 対象列を特定
     let targetColumn = null;
-
     for (const col of TARGET_COLUMNS) {
       const res = await sheetsClient.spreadsheets.values.get({
         spreadsheetId: process.env.SPREADSHEET_ID,
         range: `点呼表!${col}2`,
       });
-
       const postId = res.data.values?.[0]?.[0]?.toString() || null;
-
       if (postId === message.id) {
         targetColumn = col;
         break;
       }
     }
-
     if (!targetColumn) return;
 
+    // ユーザー行を特定
     const sheetData = await sheetsClient.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: '点呼表!A6:A',
     });
-
     const ids = sheetData.data.values?.flat() || [];
     let rowIndex = ids.indexOf(userId);
 
@@ -207,17 +204,8 @@ client.on('messageReactionAdd', async (reaction, user) => {
         spreadsheetId: process.env.SPREADSHEET_ID,
         range: '名簿!A:C',
       });
-
       const rosterRows = roster.data.values || [];
-      let found = null;
-
-      for (let i = 0; i < rosterRows.length; i++) {
-        if (rosterRows[i][0] === userId) {
-          found = rosterRows[i];
-          break;
-        }
-      }
-
+      let found = rosterRows.find(r => r[0] === userId);
       if (!found) return;
 
       await sheetsClient.spreadsheets.values.append({
@@ -231,26 +219,29 @@ client.on('messageReactionAdd', async (reaction, user) => {
         spreadsheetId: process.env.SPREADSHEET_ID,
         range: '点呼表!A6:A',
       });
-
       const updatedIds = updated.data.values?.flat() || [];
       rowIndex = updatedIds.indexOf(userId);
     }
 
     const targetRow = rowIndex + 6;
 
+    // 書き込み
     await sheetsClient.spreadsheets.values.update({
       spreadsheetId: process.env.SPREADSHEET_ID,
       range: `点呼表!${targetColumn}${targetRow}`,
       valueInputOption: 'USER_ENTERED',
-      resource: {
-        values: [[mark]],
-      },
+      resource: { values: [[mark]] },
     });
 
+    console.log(`✅ ${userId} → ${targetColumn}${targetRow} に ${mark} を反映`);
   } catch (err) {
-    console.error('Error in messageReactionAdd:', err);
+    console.error('Error in handleReactionChange:', err);
   }
-});
+}
+
+// Add と Remove 両方で呼ぶ
+client.on('messageReactionAdd', handleReactionChange);
+client.on('messageReactionRemove', handleReactionChange);
 
 // ===============================
 // 9. Discordログイン
