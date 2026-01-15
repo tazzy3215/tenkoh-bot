@@ -164,6 +164,18 @@ client.on('messageReactionAdd', async (reaction, user) => {
     else if (emoji === '❌') mark = '×';
     else return;
 
+    // ★ 他のリアクションを自動で外す（1人1つに制限）
+    const allReactions = message.reactions.cache;
+    for (const [emojiName, reactionObj] of allReactions) {
+      if (emojiName !== emoji) {
+        try {
+          await reactionObj.users.remove(userId);
+        } catch (err) {
+          console.log(`リアクション削除失敗: ${emojiName}`, err);
+        }
+      }
+    }
+
     let targetColumn = null;
 
     for (const col of TARGET_COLUMNS) {
