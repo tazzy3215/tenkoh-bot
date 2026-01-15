@@ -186,9 +186,10 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
     if (!targetColumn) return;
 
+    // ★★★ 修正：A6:A だけを検索する
     const sheetData = await sheetsClient.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
-      range: '点呼表!A:A',
+      range: '点呼表!A6:A',
     });
 
     const ids = sheetData.data.values?.flat() || [];
@@ -221,14 +222,15 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
       const updated = await sheetsClient.spreadsheets.values.get({
         spreadsheetId: process.env.SPREADSHEET_ID,
-        range: '点呼表!A:A',
+        range: '点呼表!A6:A',
       });
 
       const updatedIds = updated.data.values?.flat() || [];
       rowIndex = updatedIds.indexOf(userId);
     }
 
-    const targetRow = rowIndex + 1;
+    // ★★★ 修正：A6 から始まるので +6
+    const targetRow = rowIndex + 6;
 
     await sheetsClient.spreadsheets.values.update({
       spreadsheetId: process.env.SPREADSHEET_ID,
